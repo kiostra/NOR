@@ -1,4 +1,4 @@
-#C:/Users/carboni_eleonora/Documents/Statistica_R/NOR_groups
+#Calculates exploratory analysis of NOR output
 #remember to NOT convert numbers with commas, leave it as it is
 NOR.StatFunction <- function(namefile, variable, ordening_vector){
   
@@ -78,27 +78,155 @@ NOR.StatFunction <- function(namefile, variable, ordening_vector){
     
   }
   
-  #find the index of the variable we want to use (called ii)
-  ii <<- grep(variable, colnames(NOR.Raw))
+  #find the index of the variable we want to use (called iVar)
+  iVar <<- grep(variable, colnames(NOR.Raw))
   
   #make an ordered dataframe and check the ordening_vector
-  if(missing(ordening_vector)) {
-    ordening_vector <- vector()
-  } else {
-    ordening_vector <- ordening_vector
+  if (exists("ordening_vector")) {
+    try
+    NOR.Clean[,iVar] <- factor(NOR.Clean[,iVar], levels=ordening_vector)
   }
-  NOR.Clean[,ii] <- factor(NOR.Clean[,ii], levels=ordening_vector)
-  NOR.Clean <<-NOR.Clean[order(NOR.Clean[,ii]),]
+  else {
+    continue
+  }
+  
+  NOR.Clean[,iVar] <- factor(NOR.Clean[,iVar], levels=ordening_vector)
+  NOR.Clean <<-NOR.Clean[order(NOR.Clean[,iVar]),]
   
   #calculate ANOVA + Tukey  an put it in a doc file 
   sink("AnovaTest.doc")
   for(i in iDM:(ncol(NOR.Clean))){
     columns <- names(NOR.Clean[i])
-    anovaresult<- summary(aov(NOR.Clean[,i]~NOR.Clean[,ii]))
-    posthocresult <- TukeyHSD(aov(NOR.Clean[,i]~NOR.Clean[,ii]))
+    meanANDsd <-aggregate(NOR.Clean[,i], list(NOR.Clean[,iVar]), function (x) c(mean = mean(x), sd = sd(x)))
     
-    print(paste("your selected variable is ", colnames(NOR.Clean[ii])))
+    anovaresult<- summary(aov(NOR.Clean[,i]~NOR.Clean[,iVar]))
+    posthocresult <- TukeyHSD(aov(NOR.Clean[,i]~NOR.Clean[,iVar]))
+    
+    print(paste("your selected variable is ", colnames(NOR.Clean[iVar])))
     print(columns)
+    print(meanANDsd)
+    print(anovaresult)
+    print(posthocresult)
+  }
+  sink()
+  
+  
+  
+  
+  library(ggplot2)
+  
+  NOR.NONA <<- NOR.Clean[!is.na(NOR.Clean[i]), ]
+  
+  #boxplot graphs. Saves graphs as .pdf and .png
+   for (i in (iDM):ncol(NOR.NONA)) {
+    
+    #blocks the appeareance of warnings
+    con=file("temp.txt", "w")
+    sink(con, type="message")
+    
+    options(warn=-1)
+    
+    #general form of graph
+    p <- ggplot(NOR.NONA, aes(x=NOR.NONA[,iVar], y=NOR.NONA[, i], fill=NOR.NONA[,iVar])) +
+      geom_boxplot() + geom_dotplot(binaxis='y', stackdir='center', dotsize=0.8) + 
+      scale_fill_discrete(name = as.character(colnames(NOR.Clean[iVar]))) +
+      xlab("group") +
+      stat_boxplot(geom ='errorbar') + 
+      theme(axis.text.x=element_text(angle=45, hjust=1)) +
+      theme(text = element_text(size=20))
+    
+    if(i == iDM){
+      p = p + ggtitle(as.character(colnames(NOR.Clean[i]))) +  ylab("cm")
+      suppressMessages(print(p))
+      ggsave(filename=sprintf("var_%s.pdf", i), width = 12, height = 12)
+      ggsave(filename=sprintf("var_%s.png", i), width = 12, height = 12)
+      dev.off()
+    }
+    else{
+      title2lanes = strsplit(colnames(NOR.Clean[i]), "/")
+      p= p + ylim(0, 1) + ggtitle(paste(title2lanes[[1]][1], title2lanes[[1]][2], sep = "\n")) + ylab("Ratio")
+      suppressMessages(print(p))
+      ggsave(filename=sprintf("var_%s.pdf", i), plot=p, width = 12, height = 12)
+      ggsave(filename=sprintf("var_%s.png", i), plot=p, width = 12, height = 12)
+      dev.off()
+    }
+    
+    
+    
+    graphics.off()
+    options(warn=0)
+    sink(type="message")
+    close(con)
+    
+  }
+  
+  unlink("temp.txt", recursive=TRUE)
+  #file.remove("temp.txt")
+  
+  #save data as csv file that can be opened in excel
+  write.csv2(NOR.Clean, file = "NOR_ratioData.csv", row.names = FALSE)
+  message(paste("Message: statistics from", namefile ,"has been calculated."))
+  setwd(file.path(mainDir))
+}
+
+
+
+
+
+
+#####################################################################################################################################################
+#RECALCULATE FUNCTION
+#calculates the statistic once a csv file with all the ratio is available
+
+NOR.Recalculate <- function(namefile, variable, ordening_vector){
+  
+  #read the head of the file where the categories are stored
+  NOR.Clean <<- read.csv(file=namefile, sep=";", dec=",", na.strings = "NA", header = T, check.names=FALSE)
+  
+ 
+  #find the index of "Distance moved Center-point Total cm"
+  iDM <<- grep("moved", colnames(NOR.Clean))
+  
+  
+  
+  #make new directory with the results (and check if is there)
+  mainDir <- getwd()
+  subDir <- paste("NOR_ResultsReloaded", variable, sep="_")
+  
+  if (file.exists(subDir)){
+    setwd(file.path(mainDir, subDir))
+  } else {
+    dir.create(file.path(mainDir, subDir))
+    setwd(file.path(mainDir, subDir))
+    
+  }
+  
+  #find the index of the variable we want to use (called iVar)
+  iVar <<- grep(variable, colnames(NOR.Clean))
+  
+  #make an ordered dataframe and check the ordening_vector
+  if (exists("ordening_vector")) {
+    try
+    NOR.Clean[,iVar] <- factor(NOR.Clean[,iVar], levels=ordening_vector)
+  }
+  else {
+    continue
+  }
+  
+  NOR.Clean <<-NOR.Clean[order(NOR.Clean[,iVar]),]
+  
+  #calculate ANOVA + Tukey  an put it in a doc file 
+  sink("AnovaTest.doc")
+  for(i in iDM:(ncol(NOR.Clean))){
+    columns <- names(NOR.Clean[i])
+    meanANDsd <-aggregate(NOR.Clean[,i], list(NOR.Clean[,iVar]), function (x) c(mean = mean(x), sd = sd(x)))
+    
+    anovaresult<- summary(aov(NOR.Clean[,i]~NOR.Clean[,iVar]))
+    posthocresult <- TukeyHSD(aov(NOR.Clean[,i]~NOR.Clean[,iVar]))
+    
+    print(paste("your selected variable is ", colnames(NOR.Clean[iVar])))
+    print(columns)
+    print(meanANDsd)
     print(anovaresult)
     print(posthocresult)
   }
@@ -108,57 +236,55 @@ NOR.StatFunction <- function(namefile, variable, ordening_vector){
   library(ggplot2)
   
   NOR.NONA <<- NOR.Clean[!is.na(NOR.Clean[i]), ]
-  
-  
-  for (i in (iDM+1):ncol(NOR.NONA)) {
-    pdf(file = paste("var_", i, ".pdf", sep=""), width = 6, height = 6)
+  #boxplot graphs. Saves graphs as .pdf and .png
+  for (i in (iDM):ncol(NOR.NONA)) {
     
-    # boxplot(NOR.Clean[, i] ~ NOR.Clean[ii]) + geom_dotplot(binaxis='y', stackdir='center')
-    p <- ggplot(NOR.NONA, aes(x=NOR.NONA[,ii], y=NOR.NONA[, i])) + 
-      geom_boxplot() + geom_dotplot(binaxis='y', stackdir='center', dotsize=0.6) + 
-      ggtitle(as.character(colnames(NOR.Clean[i]))) +
+    #blocks the appeareance of warnings
+    con=file("temp.txt", "w")
+    sink(con, type="message")
+    
+    options(warn=-1)
+    
+    #general form of graph
+    p <- ggplot(NOR.NONA, aes(x=NOR.NONA[,iVar], y=NOR.NONA[, i], fill=NOR.NONA[,iVar])) +
+      geom_boxplot() + geom_dotplot(binaxis='y', stackdir='center', dotsize=0.8) + 
+      scale_fill_discrete(name = as.character(colnames(NOR.Clean[iVar]))) +
       xlab("group") +
-      ylab("Ratio") +
-      ylim(0, 1)
+      stat_boxplot(geom ='errorbar') + 
+      theme(axis.text.x=element_text(angle=45, hjust=1)) +
+      theme(text = element_text(size=20))
     
-    print(p)
-    #pdf(file = paste("var_", i, ".pdf", sep=""))
+    if(i == iDM){
+      p = p + ggtitle(as.character(colnames(NOR.Clean[i]))) +  ylab("cm")
+      suppressMessages(print(p))
+      ggsave(filename=sprintf("var_%s.pdf", i), width = 12, height = 12)
+      ggsave(filename=sprintf("var_%s.png", i), width = 12, height = 12)
+      dev.off()
+    }
+    else{
+      title2lanes = strsplit(colnames(NOR.Clean[i]), "/")
+      p= p + ylim(0, 1) + ggtitle(paste(title2lanes[[1]][1], title2lanes[[1]][2], sep = "\n")) + ylab("Ratio")
+      suppressMessages(print(p))
+      ggsave(filename=sprintf("var_%s.pdf", i), plot=p, width = 12, height = 12)
+      ggsave(filename=sprintf("var_%s.png", i), plot=p, width = 12, height = 12)
+      dev.off()
+    }
     
-    dev.off()
+    
+    
+    graphics.off()
+    options(warn=0)
+    sink(type="message")
+    close(con)
     
   }
-  on.exit(dev.off())
-  
-  graphics.off()
   
   
-  #save files as png
-  for (i in (iDM+1):ncol(NOR.NONA)) {
-    png(file = paste("var_", i, ".png", sep=""), width = 500, height = 500)
-    
-    # boxplot(NOR.Clean[, i] ~ NOR.Clean[ii]) + geom_dotplot(binaxis='y', stackdir='center')
-    p <- ggplot(NOR.NONA, aes(x=NOR.NONA[,ii], y=NOR.NONA[, i])) + 
-      geom_boxplot() + geom_dotplot(binaxis='y', stackdir='center', dotsize=1) + 
-      ggtitle(as.character(colnames(NOR.Clean[i]))) +
-      xlab("group") +
-      ylab("Ratio") +
-      ylim(0, 1)
-    
-    print(p)
-    #pdf(file = paste("var_", i, ".pdf", sep=""))
-    
-    dev.off()
-    
-  }
-  on.exit(dev.off())
+  unlink("temp.txt", recursive=TRUE)
+  #file.remove("temp.txt")
   
-  graphics.off()
-  
+  #save data as csv file that can be opened in excel
+  write.csv2(NOR.Clean, file = "NOR_ratioDataReload.csv", row.names = FALSE)
+  message(paste("Message: statistics from", namefile ,"has been recalculated."))
   setwd(file.path(mainDir))
 }
-
-#}
-
-#"C:/Users/carboni_eleonora/Documents/Statistica_R"
-#NOR_WOCalc.csv
-#stringsAsFactors=FALSE
